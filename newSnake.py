@@ -1,4 +1,3 @@
-from glob import glob
 import pygame
 import time
 import random
@@ -13,6 +12,8 @@ grey = (128, 128, 128)
 
 width = 800
 height = 800
+
+globals = {}
 
 pygame.init()
 display = pygame.display.set_mode((width, height))
@@ -53,28 +54,34 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS scores (
 )""")
 db.commit()
 
-def load_scores():
-    global scores
-    global cursor
+globals['scores'] = scores
+globals['db'] = db
+globals['cursor'] = cursor
+globals['string_parts'] = string_parts
+globals['nick_name'] = nick_name
 
-    cursor.execute(f"SELECT * FROM scores")
-    scores = cursor.fetchall()
+
+def load_scores():
+
+    globals['cursor'].execute(f"SELECT * FROM scores")
+    globals['scores'] = globals['cursor'].fetchall()
 
 
 def save_score(nickname, score, speed):
-    global scores
-    global db
-    global cursor
 
-    cursor.execute(f"SELECT * FROM scores WHERE nickname = '{nickname}' AND speed = {speed}")
-    result = cursor.fetchone()
+    globals['cursor'].execute(
+        f"SELECT * FROM scores WHERE nickname = '{nickname}' AND speed = {speed}")
+    result = globals['cursor'].fetchone()
     if result is None:
-        cursor.execute(f"INSERT INTO scores VALUES (?, ?, ?)", (nickname, score, speed))
+        globals['cursor'].execute(f"INSERT INTO scores VALUES (?, ?, ?)",
+                                  (nickname, score, speed))
     elif result[2] == speed and result[1] < score:
-        cursor.execute(f"UPDATE scores SET score WHERE nickname = '{nickname}' AND speed = {speed}")
+        globals['cursor'].execute(
+            f"UPDATE scores SET score WHERE nickname = '{nickname}' AND speed = {speed}")
     elif result[2] != speed:
-        cursor.execute(f"INSERT INTO scores VALUES (?, ?, ?)", (nickname, score, speed))
-    db.commit()
+        cursor.execute(f"INSERT INTO scores VALUES (?, ?, ?)",
+                       (nickname, score, speed))
+    globals['db'].commit()
 
 
 def check_nick(nick):
@@ -85,13 +92,12 @@ def check_nick(nick):
 
 
 def show_game_over():
-    global string_parts
 
     str_count = 0
     latter_size = 20
     str_x, str_y = 70, 50
 
-    for latter in string_parts[0]:
+    for latter in globals['string_parts'][0]:
         for string in latter:
             display.blit(font.render(string, True, red),
                          [str_x, str_y + str_count * latter_size])
@@ -99,7 +105,7 @@ def show_game_over():
         str_count += 1
     str_count = 10
     str_x = 200
-    for latter in string_parts[1]:
+    for latter in globals['string_parts'][1]:
         for string in latter:
             display.blit(font.render(string, True, red),
                          [str_x, str_y + str_count * latter_size])
@@ -122,33 +128,33 @@ def show_menu():
 
 
 def add_score_to_list(nick_name, score, speed):
-    global scores
+
     nick_exists = False
-    for i in range(len(scores)):
-        if scores[i][0] == nick_name and speed == scores[i][2]:
+    for i in range(len(globals['scores'])):
+        if globals['scores'][i][0] == nick_name and speed == globals['scores'][i][2]:
             nick_exists = True
-            if scores[i][1] < score:
-                scores[i] = (nick_name, score, speed)
+            if globals['scores'][i][1] < score:
+                globals['scores'][i] = (nick_name, score, speed)
             break
     if not nick_exists:
-        scores.append((nick_name, score, speed))
-    
+        globals['scores'].append((nick_name, score, speed))
+
 
 def sort_scores(speed):
-    global scores
-    global cursor
-    cursor.execute(f"SELECT nickname, score FROM scores WHERE speed = {speed} ORDER BY score DESC")
-    sorted_scores = cursor.fetchmany(10)
+    globals['cursor'].execute(
+        f"SELECT nickname, score FROM scores WHERE speed = {speed} ORDER BY score DESC")
+    sorted_scores = globals['cursor'].fetchmany(10)
 
     return sorted_scores
-    
+
 
 def print_score_list(scores_for_print, speed):
     step = 20
     c_pos = 0
     display.fill(green)
 
-    display.blit(font.render(f'Топ {len(scores_for_print)} со скоростью {speed}:', True, black), [width // 2, 200 + c_pos])
+    display.blit(font.render(f'Топ {len(scores_for_print)} со скоростью {speed}:', True, black), [
+                 width // 2, 200 + c_pos])
     c_pos += step
 
     for i in range(len(scores_for_print)):
@@ -222,7 +228,6 @@ class Game:
         return False
 
     def Play(self, display, font, clock):
-        global nick_name
         while True:
             if (
                 self.head_x < 0
@@ -231,8 +236,10 @@ class Game:
                 or self.head_y >= height
                 or self.is_eat_self(self.snake, self.head_x, self.head_y)
             ):
-                add_score_to_list(nick_name, self.snake_length - 1, self.speed)
-                save_score(nick_name, self.snake_length - 1, self.speed)
+                add_score_to_list(globals['nick_name'],
+                                  self.snake_length - 1, self.speed)
+                save_score(globals['nick_name'],
+                           self.snake_length - 1, self.speed)
                 scores_for_print = sort_scores(self.speed)
 
                 show_score_list(scores_for_print, self.speed)
@@ -244,7 +251,8 @@ class Game:
                     events = pygame.event.get()
                     for e in events:
                         if e.type == pygame.QUIT:
-                            save_score(nick_name, self.snake_length - 1, self.speed)
+                            save_score(
+                                globals['nick_name'], self.snake_length - 1, self.speed)
                             pygame.quit()
                             quit()
                         elif e.type == pygame.KEYDOWN:
@@ -300,6 +308,7 @@ class Game:
             pygame.display.flip()
             clock.tick(self.speed)
 
+
 load_scores()
 
 while True:
@@ -316,7 +325,7 @@ while True:
                         and pos[0] <= width // 2 + 100
                         and pos[1] >= height // 2 - 50
                         and pos[1] <= height // 2 + 50
-                            and check_nick(nick_name)):
+                            and check_nick(globals['nick_name'])):
                         game_started = True
                         cursor_state = False
                     elif (pos[0] >= width // 2 - 150
@@ -328,10 +337,10 @@ while True:
                         cursorState = False
             if e.type == pygame.KEYUP and cursor_state:
                 if e.key == pygame.K_BACKSPACE:
-                    nick_name = nick_name[:-1]
+                    globals['nick_name'] = globals['nick_name'][:-1]
                 else:
-                    if (len(nick_name) < 15):
-                        nick_name += e.unicode
+                    if (len(globals['nick_name']) < 15):
+                        globals['nick_name'] += e.unicode
 
         display.fill(green)
 
